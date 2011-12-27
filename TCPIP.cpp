@@ -16,6 +16,7 @@
 #include <netdb.h>
 #include <fcntl.h>
 #include <errno.h>
+#define BUFFER_DEBUG 1
 using namespace std;
 const int PG_NEW = 0, PG_CONNECTING = 1, PG_OK = 2, PG_CLOSE = 3;
 class PG_buffer
@@ -23,48 +24,49 @@ class PG_buffer
 public:
 	string B;
 	char c;
-	int in_fd, out_fd;
+	int fd;
 	PG_buffer()
 	{
 		B = "";
-		in_fd = -1;
-		out_fd = -1;
+		fd = -1;
 	}
 	int read_buf()
 	{
 		int r = 0, t;
 		while (1)
 		{
-			t = read(in_fd, &c, 1);
-			if (t == -1)
-			{
-				cerr << "PG_buffer error on fd : " << in_fd << endl;
-				return -1;
-			}
-			if (t == 0)
-			{
-				return r;
-			}
+			t = read(fd, &c, 1);
+			//cout << c << endl;
+			if (t <= 0) break;
 			B += c;
 			r++;
 		}
+		if (BUFFER_DEBUG)cout << "read " << r << " byte(s) from fd: " << fd << endl;
+		cout << B.substr(B.size()-r) << endl;
+		return r;
 	}
 	int write_buf()
 	{
-		int r = write(out_fd, B.c_str(), B.size());
-		B = B.substr(r);
+		if (B.size() == 0)
+		{
+			if (BUFFER_DEBUG)cout << "nothing to write" << endl;
+			return 0;
+		}
+		int r = write(fd, B.c_str(), B.size());
+		if (r == B.size()) B = "";
+		else B = B.substr(r);
+		if (BUFFER_DEBUG)cout << "write " << r << " byte(s) to fd: " << fd << endl;
 		return B.size();
 	}
+
 };
 class PG_FD_select_socket
 {
 public:
 	string host_name;
 	int port;
-	
+	PG_buffer r_buf, w_buf;
 	int fd;
-	int (PG_buffer::*w_fun_ptr)();
-	int (PG_buffer::*r_fun_ptr)();
 	struct hostent *he;
 	struct sockaddr_in sin;
 	int FSM;
@@ -87,6 +89,8 @@ public:
 		int flags = fcntl(fd, F_GETFL, 0);
 		fcntl(fd, F_SETFL, flags | O_NONBLOCK);
 		FSM = PG_CONNECTING;
+		r_buf.fd = fd; w_buf.fd = fd;
+		conekuto();
 	}
 	void conekuto()
 	{
@@ -94,15 +98,21 @@ public:
 		if (connect(fd, (struct sockaddr *)&sin, sizeof(sin)) < 0)
 		{
 			if (errno != EINPROGRESS){perror("failed in conekuto"); exit(1);}
+			else cout << "connecting but failed" << endl;
 		}
 		else
 		{
 			FSM = PG_OK;
 		}
 	}
+	void send(){w_buf.write_buf();}
+	void recv(){r_buf.read_buf();}
+	bool r_chk(){return r_buf.B.size() > 0;}
+	bool w_chk(){return w_buf.B.size() > 0;}
 };
 class PG_FD_select
 {
+public:
 	fd_set rfds, wfds, rs, ws;
 	vector<PG_FD_select_socket> sock;
 	void reset()
@@ -113,14 +123,86 @@ class PG_FD_select
 	{
 		reset();
 	}
+	int get(int q)
+	{
+		for (int i = 0; i < sock.size(); i++)
+			if (sock[i].fd == q) return i;
+		cerr << "get sock user_number error at fd: " << q << endl;
+		return -1;
+	}
 	void add(string host_name, int port)
 	{
 		PG_FD_select_socket tmp;
 		tmp.init(host_name, port);
+		
+		FD_SET(tmp.fd, &rs); FD_SET(tmp.fd, &ws);
+		
 		sock.push_back(tmp);
+
 	}
-	void go()
+	void send_msg()
 	{
+		
+	}
+	void recv_msg()
+	{
+		
+	}
+	int go()
+	{
+		
+		char buf[100000];
+		socklen_t n;
+		sock[0].w_buf.B = "ls\nls\nls\nexit\n";
+		while(1)
+		{
+
+			memcpy(&rfds, &rs, sizeof(rfds));
+			memcpy(&wfds, &ws, sizeof(wfds));
+			
+			if (select(1024, &rfds, &wfds, (fd_set*)0, (struct timeval*)0) < 0){perror("select error1"); exit(1);}
+			int t, error;
+			usleep(500000);
+			for (int i = 0; i < sock.size(); i++)
+			{
+
+				switch (sock[i].FSM)
+				{
+					case PG_CONNECTING:
+						cout << "switch connecting" << endl;
+						if (FD_ISSET(sock[i].fd, &rfds) || FD_ISSET(sock[i].fd, &wfds))
+						{
+							if (getsockopt(sock[i].fd, SOL_SOCKET, SO_ERROR, (void*)&error, &n) < 0 || error != 0)
+							{
+								perror("select error2");
+								exit(1);
+							}
+							else sock[i].FSM = PG_OK;
+						}
+						cout << "connecting end" << endl;
+						cout << sock[i].FSM << endl;
+						break;
+					
+					case PG_OK:
+						cout << "rfds " << FD_ISSET(sock[i].fd, &rfds) << endl;
+						cout << "wfds " << FD_ISSET(sock[i].fd, &wfds) << endl;
+						if (FD_ISSET(sock[i].fd, &wfds))
+						{
+							cout << "switch send" << endl;
+							sock[i].send();
+							//if (sock[i].w_chk() == 0){FD_CLR(sock[i].fd, &ws);}
+						}
+						if (FD_ISSET(sock[i].fd, &rfds))
+						{
+							cout << "switch recv" << endl;
+							sock[i].recv();
+						}
+						break;	
+				}
+			}
+		}
+		//cout << "<script >alert(document.all[\'m1\'].innerHTML);</script>" << endl;
+		cout << "go end" << endl;
 	}
 	
 	
@@ -209,11 +291,12 @@ public:
 };
 int main()
 {
-	PG_buffer a,b;
-	b.B = "12345";
-	void (PG_buffer::*t)();
-	//t = &PG_buffer::write_buf;
-	(b.*t)();
+	PG_FD_select a;
+	a.add("192.168.1.11",7000);
+	a.go();
+	cout << "end" << endl;
+	int b;
+	while(cin >> b);
 
 
 
