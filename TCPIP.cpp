@@ -16,7 +16,7 @@
 #include <netdb.h>
 #include <fcntl.h>
 #include <errno.h>
-#define BUFFER_DEBUG 1
+#define BUFFER_DEBUG 0
 using namespace std;
 const int PG_NEW = 0, PG_CONNECTING = 1, PG_OK = 2, PG_CLOSE = 3;
 class PG_buffer
@@ -30,16 +30,32 @@ public:
 		B = "";
 		fd = -1;
 	}
+	int read_buf2()
+	{
+		int t;
+		char *c = new char[1000000];
+		t = read(fd, c, 0);
+		//cout << c << endl;
+		if (t == 0) return -1; // got an EOF
+		if (t < 0){perror("ERR"); exit(1);}
+		B += c;
+
+		if (BUFFER_DEBUG)cout << "222222222222222read " << t << " byte(s) from fd: " << fd << endl;
+		cout << B.substr(B.size()-t) << endl;
+		return t;
+	}
 	int read_buf()
 	{
 		int r = 0, t;
+		int count = 0;
 		while (1)
 		{
 			t = read(fd, &c, 1);
-			//cout << c << endl;
-			if (t <= 0) break;
+			if (t == 0) return -1; // got an EOF
+			if (t == -1) break;
 			B += c;
 			r++;
+
 		}
 		if (BUFFER_DEBUG)cout << "read " << r << " byte(s) from fd: " << fd << endl;
 		cout << B.substr(B.size()-r) << endl;
@@ -105,8 +121,8 @@ public:
 			FSM = PG_OK;
 		}
 	}
-	void send(){w_buf.write_buf();}
-	void recv(){r_buf.read_buf();}
+	int send(){return w_buf.write_buf();}
+	int recv(){return r_buf.read_buf();}
 	bool r_chk(){return r_buf.B.size() > 0;}
 	bool w_chk(){return w_buf.B.size() > 0;}
 };
@@ -153,16 +169,17 @@ public:
 		
 		char buf[100000];
 		socklen_t n;
-		sock[0].w_buf.B = "ls\nls\nls\nexit\n";
+		sock[0].w_buf.B = "ls\nls\nls\nexit";
 		while(1)
 		{
 
 			memcpy(&rfds, &rs, sizeof(rfds));
 			memcpy(&wfds, &ws, sizeof(wfds));
-			
-			if (select(1024, &rfds, &wfds, (fd_set*)0, (struct timeval*)0) < 0){perror("select error1"); exit(1);}
+			int s_s = select(1024, &rfds, &wfds, (fd_set*)0, (struct timeval*)0);
+			if (s_s < 0){perror("select error1"); exit(1);}
 			int t, error;
-			usleep(500000);
+			usleep(900000);
+			if (s_s == 0){cout << "not ready yet" << endl; continue;}
 			for (int i = 0; i < sock.size(); i++)
 			{
 
@@ -184,18 +201,19 @@ public:
 						break;
 					
 					case PG_OK:
-						cout << "rfds " << FD_ISSET(sock[i].fd, &rfds) << endl;
-						cout << "wfds " << FD_ISSET(sock[i].fd, &wfds) << endl;
+						//cout << "rfds " << FD_ISSET(sock[i].fd, &rfds) << endl;
+						//cout << "wfds " << FD_ISSET(sock[i].fd, &wfds) << endl;
 						if (FD_ISSET(sock[i].fd, &wfds))
 						{
-							cout << "switch send" << endl;
+							//cout << "switch send" << endl;
 							sock[i].send();
 							//if (sock[i].w_chk() == 0){FD_CLR(sock[i].fd, &ws);}
 						}
 						if (FD_ISSET(sock[i].fd, &rfds))
 						{
-							cout << "switch recv" << endl;
-							sock[i].recv();
+							//cout << "switch recv" << endl;
+							int t = sock[i].recv();
+							//if (t == -1)FD_CLR(sock[i].fd, &rs);
 						}
 						break;	
 				}
@@ -292,7 +310,7 @@ public:
 int main()
 {
 	PG_FD_select a;
-	a.add("192.168.1.11",7000);
+	a.add("192.168.1.11",8001);
 	a.go();
 	cout << "end" << endl;
 	int b;
