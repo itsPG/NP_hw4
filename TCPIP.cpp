@@ -18,7 +18,7 @@
 #include <errno.h>
 #define BUFFER_DEBUG 0
 using namespace std;
-const int PG_NEW = 0, PG_LISTENING = 1, PG_CONNECTING = 2, PG_OK = 3, PG_CLOSE = 4;
+const int PG_NEW = 0, PG_CONNECTING = 1, PG_OK = 2, PG_CLOSE = 3;
 class PG_buffer
 {
 public:
@@ -90,7 +90,6 @@ public:
 	struct hostent *he;
 	struct sockaddr_in sin;
 	int FSM;
-
 	void init(string q1, int q2)
 	{
 		host_name = q1;
@@ -113,53 +112,6 @@ public:
 		r_buf.fd = fd; w_buf.fd = fd;
 		conekuto();
 	}
-	void init(int q1)
-	{
-		int c_fd;
-		port = q1;
-		struct sockaddr_in sin;
-		struct sockaddr_in ccin;
-		
-		
-		char buf[10000]; 
-		char addr_p[INET_ADDRSTRLEN]; 
-		int n,r; 
-       
-		bzero(&sin, sizeof(sin)); 
-		sin.sin_family = AF_INET; 
-		sin.sin_addr.s_addr = INADDR_ANY; 
-		sin.sin_port = htons(port);
-    
-		fd = socket(AF_INET, SOCK_STREAM, 0); 
-		int flags = fcntl(fd, F_GETFL, 0);
-		fcntl(fd, F_SETFL, flags | O_NONBLOCK);
-		while(1)
-		{
-			r = bind(fd, (struct sockaddr *)&sin, sizeof(sin));
-			cout << "bind: " << port << endl;
-			if(r == 0)break;
-			usleep(500000);
-		}
-		
-		r = listen(fd, 10); 
-		cout << "listen: " << r << endl;
-		FSM = PG_LISTENING;
-	}
-	int ac(string &my_ip, int &my_port)
-	{
-		int c_fd;
-		socklen_t len;
-		struct sockaddr_in sin;
-		struct sockaddr_in ccin;
-		c_fd = accept(fd, (struct sockaddr *) &ccin, &len); 
-		my_port = ntohs(ccin.sin_port);
-		char addr_p[INET_ADDRSTRLEN];
-		my_ip = inet_ntop(AF_INET, &ccin.sin_addr, addr_p, sizeof(addr_p));
-		cout << "accept: " << c_fd << endl;
-		cout << "IP: " << my_ip << endl;
-		cout << "port: " << ntohs(ccin.sin_port) << endl;
-		return c_fd;
-	}
 	void conekuto()
 	{
 		if (FSM != PG_CONNECTING){cerr << "calling conekuto at the wrong time" << endl;}
@@ -170,7 +122,6 @@ public:
 		}
 		else
 		{
-			cout << "conekuto success" << endl;
 			FSM = PG_OK;
 		}
 	}
@@ -212,37 +163,15 @@ public:
 		PG_FD_select_socket tmp;
 		tmp.init(host_name, port);
 		FD_SET(tmp.fd, &rs); FD_SET(tmp.fd, &ws);
-		tmp.put("ls\nls\nexit\n");
 		sock.push_back(tmp);
-		cout << "add " << sock.size()-1 << endl;
-	}
-	void listen(int port)
-	{
-		PG_FD_select_socket tmp;
-		tmp.init(port);
-		FD_SET(tmp.fd, &rs); FD_SET(tmp.fd, &ws);
-		sock.push_back(tmp);
-		cout << "listen " << sock.size()-1 << endl;
+
 	}
 	void add_fd(int q)
 	{
 		PG_FD_select_socket tmp;
 		tmp.fd = q;
-		tmp.r_buf.fd = q; tmp.w_buf.fd = q;
-		tmp.FSM = PG_OK;
-		FD_SET(tmp.fd, &rs); FD_SET(tmp.fd, &ws);
-		
-		sock.push_back(tmp);
-	}
-	void add_fd(int q, string ip, int port)
-	{
-		PG_FD_select_socket tmp;
-		tmp.fd = q; tmp.host_name = ip; tmp.port = port;
-		tmp.r_buf.fd = q; tmp.w_buf.fd = q;
-		tmp.FSM = PG_OK;
 		FD_SET(tmp.fd, &rs); FD_SET(tmp.fd, &ws);
 		sock.push_back(tmp);
-		cout << "add fd:" << q << " / " << ip << " / " << port << endl;
 	}
 	int go()
 	{
@@ -251,36 +180,27 @@ public:
 		socklen_t n;
 		while(sock.size() > close_count)
 		{
+
 			memcpy(&rfds, &rs, sizeof(rfds));
 			memcpy(&wfds, &ws, sizeof(wfds));
 			int s_s = select(1024, &rfds, &wfds, (fd_set*)0, (struct timeval*)0);
 			if (s_s < 0){perror("select error1"); exit(1);}
-			int t, error, c_fd;
-			usleep(900000);
+			int t, error;
+			usleep(500000);
 			if (s_s == 0){cout << "not ready yet" << endl; continue;}
-			string my_ip; int my_port;
-
 			for (int i = 0; i < sock.size(); i++)
 			{
 
 				switch (sock[i].FSM)
 				{
-					case PG_LISTENING:
-						cout << "#" << i << " switch in listening" << endl;
-						c_fd = sock[i].ac(my_ip, my_port);
-						add_fd(c_fd, my_ip, my_port);
-						break;
 					case PG_CONNECTING:
-						//cout << "#" << i << " switch in connecting" << endl;
+						cout << "switch connecting" << endl;
 						if (FD_ISSET(sock[i].fd, &rfds) || FD_ISSET(sock[i].fd, &wfds))
 						{
 							if (getsockopt(sock[i].fd, SOL_SOCKET, SO_ERROR, (void*)&error, &n) < 0 || error != 0)
 							{
-								if (errno != EINPROGRESS)
-								{
-									perror("select error2");
-									exit(1);
-								}
+								perror("select error2");
+								exit(1);
 							}
 							else sock[i].FSM = PG_OK;
 						}
@@ -289,14 +209,19 @@ public:
 						break;
 					
 					case PG_OK:
-						//cout << "#" << i << " switch in OK" << endl;
+						//cout << "rfds " << FD_ISSET(sock[i].fd, &rfds) << endl;
+						//cout << "wfds " << FD_ISSET(sock[i].fd, &wfds) << endl;
 						if (FD_ISSET(sock[i].fd, &wfds))
 						{
+							//cout << "switch send" << endl;
 							sock[i].send();
 						}
 						if (FD_ISSET(sock[i].fd, &rfds))
 						{
+							//cout << "switch recv" << endl;
 							int t = sock[i].recv();
+							
+							
 							if (t == -1) // means read return 0
 							{
 								FD_CLR(sock[i].fd, &rs);
@@ -305,10 +230,10 @@ public:
 								close(sock[i].fd);
 								close_count ++;
 								cerr << "sock got an EOF" << endl;
-								cerr << "get 1" <<  sock[i].get() << endl;
-								cerr << "get 2" <<  sock[i].get() << endl;
 								break;
 							}
+							
+							cout << t << endl;
 							if (link_table[i] != -1)
 							{
 								int aim = link_table[i];
@@ -412,12 +337,12 @@ int main()
 	//Rixia.go(8002);
 	PG_FD_select a;
 	a.add("192.168.1.11",8001);
-	//a.add("192.168.1.11",7500);
-	//a.listen(7600);
-	//a.link_table[0] = 1;
+	a.add("192.168.1.11",7500);
+	a.link_table[0] = 1;
 	a.go();
 	cout << "end" << endl;
 	int b;
 	while(cin >> b);
 
 }
+
