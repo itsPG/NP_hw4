@@ -115,7 +115,7 @@ public:
 			else return 0;
 		}
 	}
-	void go(int aim_port)
+	void go(int aim_port, int stay_flag)
 	{
 		struct sockaddr_in sin;
 		struct sockaddr_in cin;
@@ -135,31 +135,37 @@ public:
 		while(1)
 		{
 			r = bind(l_fd, (struct sockaddr *)&sin, sizeof(sin));
-			cout << "bind: " << sin.sin_port << endl;
+			cout << getpid() << " bind: " << port << endl;
 			if(r == 0)break;
-			usleep(50000);
+			usleep(500000);
 		}
 		r = listen(l_fd, 10); 
-		cout << "listen: " << r << endl;
+		cout << "listen: " << port << endl;
 		printf("waiting ...\n");
 		while(1)
 		{
-			usleep(700000);
+			if (stay_flag) cout << "before accept" << endl;
 			c_fd = accept(l_fd, (struct sockaddr *) &cin, &len); 
+			if (stay_flag) cout << "after accept" << endl;
 			if (c_fd == -1)
 			{
 				perror("accept error");
 				continue;
 			}
-
+			
 			my_port = ntohs(cin.sin_port);
 			char addr_p[INET_ADDRSTRLEN];
 			my_ip = inet_ntop(AF_INET, &cin.sin_addr, addr_p, sizeof(addr_p));
 			//cout << "accept: " << c_fd << endl;
 			//cout << "IP: " << my_ip << endl;
 			//cout << "port: " << ntohs(cin.sin_port) << endl;
-			cout << "accept: " << my_ip << " / " << port << endl;
+			cout << "accept: " << my_ip << " / " << my_port << endl;
 			//return;
+			if (stay_flag)
+			{
+				close(l_fd);
+				return;
+			}
 			if (pid = harmonics())
 			{
 
@@ -177,6 +183,10 @@ public:
 				return ;
 			}
 		}
+	}
+	void go(int aim_port)
+	{
+		go(aim_port, 0);
 	}
 	void go()
 	{

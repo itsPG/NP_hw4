@@ -51,14 +51,14 @@ public:
 			cerr << "!!!!!!!!!!!!!!! socks request error : " << q << " size : " << q.size() << endl;
 			//exit(1);
 		}
-		VN = q[0];
-		CD = q[1];
-		DST_PORT = q[2] << 8 | q[3];
+		VN = (unsigned char)q[0];
+		CD = (unsigned char)q[1];
+		DST_PORT = (unsigned char)q[2] << 8 | (unsigned char)q[3];
 		DST_IP = 
-			q[4] << 24 | 
-			q[5] << 16 |
-			q[6] << 8 |
-			q[7];
+			(unsigned char)q[4] << 24 | 
+			(unsigned char)q[5] << 16 |
+			(unsigned char)q[6] << 8 |
+			(unsigned char)q[7];
 		ip_str = i2s((unsigned char)q[4]) + "." + i2s((unsigned char)q[5]) + "." + i2s((unsigned char)q[6]) + "." + i2s((unsigned char)q[7]);
 		USER_ID = q.c_str() + 8;
 		cout << "#" << getpid() << " is created for " << ip_str << endl;
@@ -76,14 +76,21 @@ public:
 		string r = "        ";
 		r[0] = 0;
 		r[1] = 90;
-		//r[2] = port / 256;
-		//r[3] = port % 256;
-		//r[4] = 192;
-		//r[5] = 168;
-		//r[6] = 1;
-		//r[7] = 11;
+		
 		for (int i = 2; i <= 7; i++) r[i] = buf[i];
-		//for (int i = 0; i <= 7; i++)cout << "r[" << i << "] : " << (unsigned int)r[i] << endl;
+		write(fd, r.c_str(), 8);
+	}
+	void BIND_reply(int fd)
+	{
+		string r = "        ";
+		r[0] = 0;
+		r[1] = 90;
+		r[2] = 60001 / 256;
+		r[3] = 60001 % 256;
+		r[4] = 0;
+		r[5] = 0;
+		r[6] = 0;
+		r[7] = 0;
 		write(fd, r.c_str(), 8);
 	}
 };
@@ -152,7 +159,7 @@ public:
 	
 	
 };
-PG_TCP_server Rixia;
+PG_TCP_server Rixia, Rixia2;
 PG_TCP_client Elie;
 PG_socks_v4 Tio;
 PG_FD_binder Noel;
@@ -161,10 +168,24 @@ int main()
 	Rixia.go(8001);
 	int c_fd = Rixia.c_fd;
 	Tio.get_request(c_fd);
-	//Tio.print();
-	Elie.init(Tio.ip_str, Tio.DST_PORT);
-	Tio.reply(c_fd);
-	Noel.init(c_fd, Elie.fd);
-	Noel.go();
+	Tio.print();
+	if (Tio.CD == 1)
+	{
+		cout << "#" << getpid() << " CONNECT" << endl;
+		Elie.init(Tio.ip_str, Tio.DST_PORT);
+		Tio.reply(c_fd);
+		Noel.init(c_fd, Elie.fd);
+		Noel.go();
+	}
+	if (Tio.CD == 2)
+	{
+		cout << "#" << getpid() << " BIND" << endl;
+		Tio.BIND_reply(c_fd);
+		Rixia2.go(60001,1);
+		Tio.BIND_reply(c_fd);
+		cout << "#" << getpid() << " replyed" << endl;
+		Noel.init(Rixia2.c_fd, c_fd);
+		Noel.go();
+	}
 	
 }
