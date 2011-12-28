@@ -30,20 +30,6 @@ public:
 		B = "";
 		fd = -1;
 	}
-	int read_buf2()
-	{
-		int t;
-		char *c = new char[1000000];
-		t = read(fd, c, 0);
-		//cout << c << endl;
-		if (t == 0) return -1; // got an EOF
-		if (t < 0){perror("ERR"); exit(1);}
-		B += c;
-
-		if (BUFFER_DEBUG)cout << "222222222222222read " << t << " byte(s) from fd: " << fd << endl;
-		cout << B.substr(B.size()-t) << endl;
-		return t;
-	}
 	int read_buf()
 	{
 		int r = 0, t;
@@ -73,6 +59,24 @@ public:
 		else B = B.substr(r);
 		if (BUFFER_DEBUG)cout << "write " << r << " byte(s) to fd: " << fd << endl;
 		return B.size();
+	}
+	string get()
+	{
+		string r = B;
+		B = "";
+		return r;
+	}
+	int get(string &q, int len)
+	{
+		if (B.size() < len)return -1;
+		q = B.substr(0,len);
+		B = B.substr(len);
+		return 0;
+	}
+	int put(string &q)
+	{
+		B += q;
+		return 0;
 	}
 
 };
@@ -123,6 +127,9 @@ public:
 	}
 	int send(){return w_buf.write_buf();}
 	int recv(){return r_buf.read_buf();}
+	string get(){return r_buf.get();}
+	int get(string &q, int len){return r_buf.get(q,len);}
+	int put(string q){return w_buf.put(q);}
 	bool r_chk(){return r_buf.B.size() > 0;}
 	bool w_chk(){return w_buf.B.size() > 0;}
 };
@@ -131,8 +138,13 @@ class PG_FD_select
 public:
 	fd_set rfds, wfds, rs, ws;
 	vector<PG_FD_select_socket> sock;
+	int close_count;
+	int link_table[1000];
 	void reset()
 	{
+		//memset(link_table, 0, sizeof(link_table));
+		for (int i = 0; i < 1000; i++)link_table[i] = -1;
+		close_count = 0;
 		FD_ZERO(&rfds); FD_ZERO(&wfds); FD_ZERO(&rs); FD_ZERO(&ws);
 	}
 	PG_FD_select()
@@ -150,27 +162,23 @@ public:
 	{
 		PG_FD_select_socket tmp;
 		tmp.init(host_name, port);
-		
 		FD_SET(tmp.fd, &rs); FD_SET(tmp.fd, &ws);
-		
 		sock.push_back(tmp);
 
 	}
-	void send_msg()
+	void add_fd(int q)
 	{
-		
-	}
-	void recv_msg()
-	{
-		
+		PG_FD_select_socket tmp;
+		tmp.fd = q;
+		FD_SET(tmp.fd, &rs); FD_SET(tmp.fd, &ws);
+		sock.push_back(tmp);
 	}
 	int go()
 	{
 		
 		char buf[100000];
 		socklen_t n;
-		sock[0].w_buf.B = "ls\nls\nls\nexit";
-		while(1)
+		while(sock.size() > close_count)
 		{
 
 			memcpy(&rfds, &rs, sizeof(rfds));
@@ -178,7 +186,7 @@ public:
 			int s_s = select(1024, &rfds, &wfds, (fd_set*)0, (struct timeval*)0);
 			if (s_s < 0){perror("select error1"); exit(1);}
 			int t, error;
-			usleep(900000);
+			usleep(500000);
 			if (s_s == 0){cout << "not ready yet" << endl; continue;}
 			for (int i = 0; i < sock.size(); i++)
 			{
@@ -207,19 +215,35 @@ public:
 						{
 							//cout << "switch send" << endl;
 							sock[i].send();
-							//if (sock[i].w_chk() == 0){FD_CLR(sock[i].fd, &ws);}
 						}
 						if (FD_ISSET(sock[i].fd, &rfds))
 						{
 							//cout << "switch recv" << endl;
 							int t = sock[i].recv();
-							//if (t == -1)FD_CLR(sock[i].fd, &rs);
+							
+							
+							if (t == -1) // means read return 0
+							{
+								FD_CLR(sock[i].fd, &rs);
+								FD_CLR(sock[i].fd, &ws);
+								shutdown(sock[i].fd, 2);
+								close(sock[i].fd);
+								close_count ++;
+								cerr << "sock got an EOF" << endl;
+								break;
+							}
+							
+							cout << t << endl;
+							if (link_table[i] != -1)
+							{
+								int aim = link_table[i];
+								sock[aim].put(sock[i].get());
+							}
 						}
 						break;	
 				}
 			}
 		}
-		//cout << "<script >alert(document.all[\'m1\'].innerHTML);</script>" << endl;
 		cout << "go end" << endl;
 	}
 	
@@ -270,7 +294,7 @@ public:
 			r = bind(l_fd, (struct sockaddr *)&sin, sizeof(sin));
 			cout << "bind: " << sin.sin_port << endl;
 			if(r == 0)break;
-			usleep(500000);
+			usleep(50000);
 		}
 		r = listen(l_fd, 10); 
 		cout << "listen: " << r << endl;
@@ -293,10 +317,10 @@ public:
 			else
 			{
 				close(l_fd);
-				dup2(c_fd, 0);
-				dup2(c_fd, 1);
-				dup2(c_fd, 2);
-				close(c_fd);
+				//dup2(c_fd, 0);
+				//dup2(c_fd, 1);
+				//dup2(c_fd, 2);
+				//close(c_fd);
 				return ;
 			}
 		}
@@ -309,15 +333,15 @@ public:
 };
 int main()
 {
+	//PG_TCP_server Rixia;
+	//Rixia.go(8002);
 	PG_FD_select a;
 	a.add("192.168.1.11",8001);
+	a.add("192.168.1.11",7500);
+	a.link_table[0] = 1;
 	a.go();
 	cout << "end" << endl;
 	int b;
 	while(cin >> b);
-
-
-
-
 
 }
