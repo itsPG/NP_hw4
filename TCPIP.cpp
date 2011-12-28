@@ -16,7 +16,8 @@
 #include <netdb.h>
 #include <fcntl.h>
 #include <errno.h>
-#define BUFFER_DEBUG 0
+#define BUFFER_DEBUG 1
+#define PG_NON_BLOCKING 0
 using namespace std;
 const int PG_NEW = 0, PG_CONNECTING = 1, PG_OK = 2, PG_CLOSE = 3;
 class PG_buffer
@@ -86,10 +87,17 @@ public:
 	string host_name;
 	int port;
 	PG_buffer r_buf, w_buf;
+	void (*r_callback)(PG_FD_select_socket*);
+	void (*w_callback)(PG_FD_select_socket*);
 	int fd;
 	struct hostent *he;
 	struct sockaddr_in sin;
 	int FSM;
+	PG_FD_select_socket()
+	{
+		r_callback = NULL;
+		w_callback = NULL;
+	}
 	void init(string q1, int q2)
 	{
 		host_name = q1;
@@ -106,8 +114,11 @@ public:
 		sin.sin_addr = *((struct in_addr *)he->h_addr); 
 		sin.sin_port = htons(port);
 		
-		int flags = fcntl(fd, F_GETFL, 0);
-		fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+		if (PG_NON_BLOCKING)
+		{
+			int flags = fcntl(fd, F_GETFL, 0);
+			fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+		}
 		FSM = PG_CONNECTING;
 		r_buf.fd = fd; w_buf.fd = fd;
 		conekuto();
@@ -166,16 +177,24 @@ public:
 		sock.push_back(tmp);
 
 	}
-	void add_fd(int q)
+	//void add(string host_name, int port, void (*a)(), void (*b)())
+	void add_fd(int q, void (*r)(PG_FD_select_socket*), void (*w)(PG_FD_select_socket*))
 	{
 		PG_FD_select_socket tmp;
 		tmp.fd = q;
+		tmp.r_buf.fd = q; tmp.w_buf.fd = q;
+		tmp.r_callback = r; tmp.w_callback = w;
 		FD_SET(tmp.fd, &rs); FD_SET(tmp.fd, &ws);
+		tmp.FSM = PG_OK;
 		sock.push_back(tmp);
+	}
+	void add_fd(int q)
+	{
+		add_fd(q, NULL, NULL);
 	}
 	int go()
 	{
-		
+		cout << "sock size " << sock.size() << endl;
 		char buf[100000];
 		socklen_t n;
 		while(sock.size() > close_count)
@@ -190,7 +209,7 @@ public:
 			if (s_s == 0){cout << "not ready yet" << endl; continue;}
 			for (int i = 0; i < sock.size(); i++)
 			{
-
+				cout << "#" << i << " FSM " << sock[i].FSM << endl;
 				switch (sock[i].FSM)
 				{
 					case PG_CONNECTING:
@@ -209,19 +228,22 @@ public:
 						break;
 					
 					case PG_OK:
-						//cout << "rfds " << FD_ISSET(sock[i].fd, &rfds) << endl;
-						//cout << "wfds " << FD_ISSET(sock[i].fd, &wfds) << endl;
+						//cout << "switch OK" << endl;
 						if (FD_ISSET(sock[i].fd, &wfds))
 						{
-							//cout << "switch send" << endl;
 							sock[i].send();
+							if (sock[i].w_callback != NULL) sock[i].w_callback( &(sock[i]) );
+								
 						}
 						if (FD_ISSET(sock[i].fd, &rfds))
 						{
-							//cout << "switch recv" << endl;
 							int t = sock[i].recv();
-							
-							
+							if (sock[i].r_callback != NULL) sock[i].r_callback( &(sock[i]) );
+							if (link_table[i] != -1)
+							{
+								int aim = link_table[i];
+								sock[aim].put(sock[i].get());
+							}
 							if (t == -1) // means read return 0
 							{
 								FD_CLR(sock[i].fd, &rs);
@@ -233,12 +255,6 @@ public:
 								break;
 							}
 							
-							cout << t << endl;
-							if (link_table[i] != -1)
-							{
-								int aim = link_table[i];
-								sock[aim].put(sock[i].get());
-							}
 						}
 						break;	
 				}
@@ -301,14 +317,25 @@ public:
 		printf("waiting ...\n");
 		while(1)
 		{
-			usleep(500000);
+			usleep(700000);
 			c_fd = accept(l_fd, (struct sockaddr *) &cin, &len); 
+			if (c_fd == -1)
+			{
+				perror("accept error");
+				continue;
+			}
+			if (PG_NON_BLOCKING)
+			{
+				int flags = fcntl(c_fd, F_GETFL, 0);
+				fcntl(c_fd, F_SETFL, flags | O_NONBLOCK);
+			}
 			my_port = ntohs(cin.sin_port);
 			char addr_p[INET_ADDRSTRLEN];
 			my_ip = inet_ntop(AF_INET, &cin.sin_addr, addr_p, sizeof(addr_p));
 			cout << "accept: " << c_fd << endl;
 			cout << "IP: " << my_ip << endl;
 			cout << "port: " << ntohs(cin.sin_port) << endl;
+			
 			if (pid = harmonics())
 			{
 				cout << "parent" << endl;
@@ -331,18 +358,22 @@ public:
 	}
 
 };
-int main()
-{
+
+
+//int main()
+//{
 	//PG_TCP_server Rixia;
 	//Rixia.go(8002);
-	PG_FD_select a;
-	a.add("192.168.1.11",8001);
-	a.add("192.168.1.11",7500);
-	a.link_table[0] = 1;
-	a.go();
-	cout << "end" << endl;
-	int b;
-	while(cin >> b);
+	//cout << "After Rixia go" << endl;
+	//PG_FD_select a;
+	//a.add("192.168.1.11",8001);
+	//a.add("192.168.1.11",7500);
+	//a.link_table[0] = 1;
+	//a.add_fd(Rixia.c_fd);
+	//a.go();
+	//cout << "end" << endl;
+	//int b;
+	//while(cin >> b);
 
-}
+//}
 
