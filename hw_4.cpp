@@ -32,6 +32,8 @@ int s2i(string q)
 	ssin >> r;
 	return r;
 }
+PG_TCP_server Rixia, Rixia2;
+PG_TCP_client Elie;
 class PG_socks_v4
 {
 public:
@@ -39,8 +41,10 @@ public:
 	unsigned int DST_PORT, DST_IP;
 	string USER_ID, HOST_NAME;
 	string ip_str,buf;
+	bool reject;
 	void get_request(int fd)
 	{
+		reject = 0;
 		string q = "", tmp;
 		PG_get(fd, q, 8);
 		PG_get(fd, tmp, -1);
@@ -62,21 +66,45 @@ public:
 			(unsigned char)q[7];
 		ip_str = i2s((unsigned char)q[4]) + "." + i2s((unsigned char)q[5]) + "." + i2s((unsigned char)q[6]) + "." + i2s((unsigned char)q[7]);
 		USER_ID = q.c_str() + 8;
+		if (q[4] == 0 && q[5] == 0 && q[6] == 0)
+		{
+			PG_get(fd, HOST_NAME, -1);
+			struct hostent *he;
+			he = gethostbyname(HOST_NAME.c_str());
+			struct sockaddr_in sin;
+			sin.sin_addr = *((struct in_addr *)he->h_addr);
+			char addr_p[INET_ADDRSTRLEN];
+			ip_str = inet_ntop(AF_INET, &sin.sin_addr, addr_p, sizeof(addr_p));
+		}
 		cout << "#" << getpid() << " is created for " << ip_str << endl;
+		if (q[5] == 113)reject = 1;
 	}
 	void print()
 	{
-		cout << "VN: " << (int)VN << endl;
-		cout << "CD: " << (int)CD << endl;
-		cout << "DST_PORT: " << DST_PORT << endl;
-		cout << "DST_IP: " << ip_str << " / " << DST_IP << endl;
-		cout << "USER_ID: " << USER_ID << " size: " << USER_ID.size() << endl;
+		cout << "\033[1;33m" ;
+		cout << "VN: " << (int)VN << ", CD: " << (int)CD << ", DST IP: " << ip_str;
+		cout << ",DST_PORT: " << DST_PORT << ", USERID:" << USER_ID << endl;
+		cout << "\033[0;m" ;
+	}
+	void allow_msg()
+	{
+		cout << "\033[1;32m" ;
+		cout << "Permit Src = " << Rixia.my_ip << "(" << Rixia.my_port << "), ";
+		cout << "Dst = " << ip_str << "(" << DST_PORT << ")" << endl;
+		cout << "\033[0;m" ;
+	}
+	void deny_msg()
+	{
+		cout << "\033[1;31m" ;
+		cout << "Reject Src = " << Rixia.my_ip << "(" << Rixia.my_port << "), ";
+		cout << "Dst = " << ip_str << "(" << DST_PORT << ")" << endl;
+		cout << "\033[0;m" ;
 	}
 	void reply(int fd)
 	{
 		string r = "        ";
 		r[0] = 0;
-		r[1] = 90;
+		r[1] = 90 + reject;
 		
 		for (int i = 2; i <= 7; i++) r[i] = buf[i];
 		write(fd, r.c_str(), 8);
@@ -85,7 +113,7 @@ public:
 	{
 		string r = "        ";
 		r[0] = 0;
-		r[1] = 90;
+		r[1] = 90 + reject;
 		r[2] = port / 256;
 		r[3] = port % 256;
 		r[4] = 140;
@@ -95,6 +123,7 @@ public:
 		write(fd, r.c_str(), 8);
 	}
 };
+PG_socks_v4 Tio;
 class PG_FD_binder
 {
 public:
@@ -118,8 +147,10 @@ public:
 			return -1;
 		}
 		int len2 = write(to, buf, len);
-		cout << "#" << getpid() << " read " << len << "byte(s) and write " << len2 << "byte(s) " << endl;
+		//cout << "#" << getpid() << " read " << len << "byte(s) and write " << len2 << "byte(s) " << endl;
 		//cout << buf << endl;
+		Tio.allow_msg();
+		
 		return 0;
 	}
 	void close_socket(int q)
@@ -171,9 +202,8 @@ public:
 	
 	
 };
-PG_TCP_server Rixia, Rixia2;
-PG_TCP_client Elie;
-PG_socks_v4 Tio;
+
+
 PG_FD_binder Noel;
 
 int main()
@@ -188,6 +218,11 @@ int main()
 	int bind_port;
 	Tio.get_request(c_fd);
 	Tio.print();
+	if (Tio.reject)
+	{
+		Tio.deny_msg();
+		exit(0);
+	}
 	if (Tio.CD == 1)
 	{
 		cout << "#" << getpid() << " CONNECT" << endl;
