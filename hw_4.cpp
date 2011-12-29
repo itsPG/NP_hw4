@@ -17,6 +17,7 @@
 #include <fcntl.h>
 #include <errno.h>
 
+int global_l_fd;
 #include "TCPIP_v2.cpp"
 string i2s(int q)
 {
@@ -80,17 +81,17 @@ public:
 		for (int i = 2; i <= 7; i++) r[i] = buf[i];
 		write(fd, r.c_str(), 8);
 	}
-	void BIND_reply(int fd)
+	void BIND_reply(int fd, int port)
 	{
 		string r = "        ";
 		r[0] = 0;
 		r[1] = 90;
-		r[2] = 60001 / 256;
-		r[3] = 60001 % 256;
-		r[4] = 0;
-		r[5] = 0;
-		r[6] = 0;
-		r[7] = 0;
+		r[2] = port / 256;
+		r[3] = port % 256;
+		r[4] = 140;
+		r[5] = 113;
+		r[6] = 179;
+		r[7] = 240;
 		write(fd, r.c_str(), 8);
 	}
 };
@@ -121,6 +122,12 @@ public:
 		//cout << buf << endl;
 		return 0;
 	}
+	void close_socket(int q)
+	{
+		FD_CLR(q, &rs);
+		shutdown (q, 2);
+		close(q);
+	}
 	void go()
 	{
 		int state = 2;
@@ -139,10 +146,9 @@ public:
 				//cout << "r " << r << endl;
 				if (r == -1)
 				{
-					FD_CLR(src_fd, &rs);
-					state --;
-					shutdown (dst_fd,2);
-					close(dst_fd);
+					close_socket(src_fd);
+					close_socket(dst_fd);
+					state = -1;
 					break;
 				}
 			}
@@ -150,7 +156,13 @@ public:
 			{
 				//cout << "DST" << endl;
 				int r = transfer(dst_fd, src_fd);
-				if (r == -1){FD_CLR(dst_fd, &rs); state --;}
+				if (r == -1)
+				{
+					close_socket(src_fd);
+					close_socket(dst_fd);
+					state = -1;
+					break;
+				}
 			}
 		}
 		cout << "#" << getpid() << " end" << endl;
@@ -163,10 +175,17 @@ PG_TCP_server Rixia, Rixia2;
 PG_TCP_client Elie;
 PG_socks_v4 Tio;
 PG_FD_binder Noel;
+
 int main()
 {
-	Rixia.go(8001);
+	Rixia.init_and_bind(8001,0);
+	//Rixia2.init_and_bind(60001,1);
+	global_l_fd = Rixia2.l_fd;
+	Rixia.go();
+	
+	
 	int c_fd = Rixia.c_fd;
+	int bind_port;
 	Tio.get_request(c_fd);
 	Tio.print();
 	if (Tio.CD == 1)
@@ -179,11 +198,19 @@ int main()
 	}
 	if (Tio.CD == 2)
 	{
+		
 		cout << "#" << getpid() << " BIND" << endl;
-		Tio.BIND_reply(c_fd);
-		Rixia2.go(60001,1);
-		Tio.BIND_reply(c_fd);
+		for (int i = 60001; i <= 65000; i++)
+		{
+			cout << "trying " << i << endl;
+			int r = Rixia2.init_and_bind(i,1);
+			if (r != -1){bind_port = i; cout << "using " << i << endl; break; }
+		}
+		Tio.BIND_reply(c_fd, bind_port);
+		Rixia2.go();
+		Tio.BIND_reply(c_fd, bind_port);
 		cout << "#" << getpid() << " replyed" << endl;
+		close(Rixia2.l_fd);
 		Noel.init(Rixia2.c_fd, c_fd);
 		Noel.go();
 	}

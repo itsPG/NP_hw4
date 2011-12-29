@@ -98,6 +98,7 @@ public:
 	int c_fd, l_fd, pid;
 	string my_ip;
 	int my_port;
+	bool stay_flag;
 	int harmonics()
 	{
 		int pid, stat;
@@ -115,11 +116,11 @@ public:
 			else return 0;
 		}
 	}
-	void go(int aim_port, int stay_flag)
+	int init_and_bind(int aim_port, int stay_flag_in)
 	{
 		struct sockaddr_in sin;
 		struct sockaddr_in cin;
-		
+		stay_flag = stay_flag_in;
 		socklen_t len;
 		char buf[10000]; 
 		char addr_p[INET_ADDRSTRLEN]; 
@@ -134,13 +135,24 @@ public:
 		l_fd = socket(AF_INET, SOCK_STREAM, 0); 
 		while(1)
 		{
+			
+			int enable = 1;
+			setsockopt(l_fd, SOL_SOCKET, SO_REUSEADDR,  &enable, sizeof(int));
+			
 			r = bind(l_fd, (struct sockaddr *)&sin, sizeof(sin));
 			cout << getpid() << " bind: " << port << endl;
-			if(r == 0)break;
-			usleep(500000);
+			if(r == 0) return 0;
+			else return -1;
 		}
-		r = listen(l_fd, 10); 
-		cout << "listen: " << port << endl;
+	}
+	void go()
+	{
+		struct sockaddr_in sin;
+		struct sockaddr_in cin;
+		socklen_t len;
+		
+		listen(l_fd, 10); 
+		cout << "listen: " << endl;
 		printf("waiting ...\n");
 		while(1)
 		{
@@ -150,7 +162,7 @@ public:
 			if (c_fd == -1)
 			{
 				perror("accept error");
-				continue;
+				exit(1);
 			}
 			
 			my_port = ntohs(cin.sin_port);
@@ -163,15 +175,16 @@ public:
 			//return;
 			if (stay_flag)
 			{
-				close(l_fd);
+				cout << "return !! " << endl;
+				//close(l_fd);
 				return;
 			}
 			if (pid = harmonics())
 			{
-
 				//cout << "parent" << endl;
 				close(c_fd);
-				
+				//close(global_l_fd);
+
 			}
 			else
 			{
@@ -183,14 +196,6 @@ public:
 				return ;
 			}
 		}
-	}
-	void go(int aim_port)
-	{
-		go(aim_port, 0);
-	}
-	void go()
-	{
-		go(7000);
 	}
 };
 
