@@ -77,7 +77,7 @@ public:
 			ip_str = inet_ntop(AF_INET, &sin.sin_addr, addr_p, sizeof(addr_p));
 		}
 		cout << "#" << getpid() << " is created for " << ip_str << endl;
-		if (q[5] == 113)reject = 1;
+		if (q[5] == 114)reject = 1;
 	}
 	void print()
 	{
@@ -143,14 +143,17 @@ public:
 		int len = read(from, buf, 500000);
 		if (len == 0)
 		{
-			cout << "#" << getpid() << " got an EOF" << endl;
+			//cout << "#" << getpid() << " got an EOF" << endl;
 			return -1;
 		}
 		int len2 = write(to, buf, len);
 		//cout << "#" << getpid() << " read " << len << "byte(s) and write " << len2 << "byte(s) " << endl;
 		//cout << buf << endl;
 		Tio.allow_msg();
-		
+		cout << "\033[0;32m" ;
+		string tmp = buf;
+		cout << tmp.substr(0,70) ;
+		cout << "\033[0;m" << endl;
 		return 0;
 	}
 	void close_socket(int q)
