@@ -69,6 +69,47 @@ public:
 		}
 	}
 };
+class PG_socks_v4_client
+{
+public:
+	string encode_request(int mode, int port, int a, int b, int c, int d, string id, string dn)
+	{
+		string r = "";
+		r += (unsigned char)4;
+		r += (unsigned char)mode;
+		r += (unsigned char)(port / 256);
+		r += (unsigned char)(port % 256);
+		r += (unsigned char)a;
+		r += (unsigned char)b;
+		r += (unsigned char)c;
+		r += (unsigned char)d;
+		r += id;
+		r += '\0';
+		if (a == 0 && b == 0 && c == 0)
+		{
+			r += dn;
+			r += '\0';
+		}
+		return r;
+	}
+	int conekuto(int r_fd, int w_fd, int mode, int port, int a, int b, int c, int d, string id, string dn)
+	{
+		string tmp = encode_request(mode, port, a, b, c, d, id, dn);
+		write(w_fd, tmp.c_str(), tmp.size());
+		char buf[8] = {0};
+		read(r_fd, buf, 8);
+		if (buf[1] != 90)
+		{
+			cerr << "socks server connect failed" << endl;
+			exit(1);
+		}
+		else
+		{
+			cerr << "SOCKS connect success" << endl;
+			return 0;
+		}
+	}
+};
 class PG_clients
 {
 public:
@@ -77,14 +118,17 @@ public:
 	struct sockaddr_in sin[11];
 	struct hostent *he;
 	string host_name[11];
+	string s_host_name[11];
 	string data[11];
 	string cmd[11];
 	int port[11];
+	int s_port[11];
 	int FSM[11];
 	int count[11];
 	int cmd_m[11];
 	bool done_flag[11];
 	bool buffering[11];
+	bool use_socksV4[11];
 	const static int F_CONNECTING = 1, F_READING = 2, F_WRITING = 3, F_LAST_READ = 4, F_DONE = 5;
 	int max;
 	int alive;
@@ -95,33 +139,71 @@ public:
 		alive = 0;
 		FD_ZERO(&rfds); FD_ZERO(&wfds); FD_ZERO(&rs); FD_ZERO(&ws);
 	}
+	/***** hw4 add code start *****/
+	
+		
+		
+	/***** hw4 add code  end  *****/
 	void init(int q)
 	{
 		cmd[q] = "";
 		count[q] = 0;
 		done_flag[q] = 0;
 		buffering[q] = 0;
+		
 		FSM[q] = F_CONNECTING;
-		he = gethostbyname(host_name[q].c_str());
-		if (he == NULL)
+		if (use_socksV4[q])
 		{
-			cerr << "gethostbyname error" << endl;
-			exit(1);
+
+			he = gethostbyname(s_host_name[q].c_str());
+			if (he == NULL)
+			{
+				cerr << "gethostbyname error" << endl;
+				exit(1);
+			}
+			fd[q] = socket(AF_INET, SOCK_STREAM, 0);
+			bzero(&sin[q], sizeof(sin[q]));
+			sin[q].sin_family = AF_INET;
+			sin[q].sin_addr = *((struct in_addr *)he->h_addr); 
+			sin[q].sin_port = htons(s_port[q]);
+			
+
+			if (connect(fd[q], (struct sockaddr *)&sin[q], sizeof(sin[q])) < 0)
+			{
+				perror("socks server connect failed");
+				exit(1);
+			}
+			PG_socks_v4_client Rixia;
+			
+			
+			Rixia.conekuto(fd[q], fd[q], 1, port[q], 0, 0, 0, 1, "PG", host_name[q]);
+			int flags = fcntl(fd[q], F_GETFL, 0);
+			fcntl(fd[q], F_SETFL, flags | O_NONBLOCK);
+			FD_SET(fd[q], &rs);
+			FSM[q] = F_READING;
+			print_head(q);
+			alive++;
+			
 		}
-		fd[q] = socket(AF_INET, SOCK_STREAM, 0);
-		bzero(&sin[q], sizeof(sin[q]));
-		sin[q].sin_family = AF_INET;
-		sin[q].sin_addr = *((struct in_addr *)he->h_addr); 
-		sin[q].sin_port = htons(port[q]);
-		/***** hw4 add code start *****/
+		else
+		{
 		
-		
-		
-		/***** hw4 add code  end  *****/
-		int flags = fcntl(fd[q], F_GETFL, 0);
-		fcntl(fd[q], F_SETFL, flags | O_NONBLOCK);
-		FD_SET(fd[q], &rs);
-		FD_SET(fd[q], &ws);
+			he = gethostbyname(host_name[q].c_str());
+			if (he == NULL)
+			{
+				cerr << "gethostbyname error" << endl;
+				exit(1);
+			}
+			fd[q] = socket(AF_INET, SOCK_STREAM, 0);
+			bzero(&sin[q], sizeof(sin[q]));
+			sin[q].sin_family = AF_INET;
+			sin[q].sin_addr = *((struct in_addr *)he->h_addr); 
+			sin[q].sin_port = htons(port[q]);
+			int flags = fcntl(fd[q], F_GETFL, 0);
+			fcntl(fd[q], F_SETFL, flags | O_NONBLOCK);
+			FD_SET(fd[q], &rs);
+			FD_SET(fd[q], &ws);
+		}
 	}
 	void conekuto(int q)
 	{
@@ -132,20 +214,39 @@ public:
 		}
 		alive++;
 	}
-	void add_user(string ip, string pt, string fn)
+	void add_user(string ip, string pt, string fn, string sip, string spt)
 	{
 		max++;
 		host_name[max] = ip;
 		port[max] = s2i(pt);
 		data[max] = "";
+		
+		if (sip != "")
+		{
+			use_socksV4[max] = 1;
+			s_host_name[max] = sip;
+			s_port[max] = s2i(spt);
+		}
+		else
+		{
+			use_socksV4[max] = 0;
+		}
+		
 		ifstream fin(fn.data());
 		char c;
 		while (fin.get(c)) data[max] += c;
 		//cout << "client " << max << " get " << data[max] << endl;
-		
-		init(max);
-		conekuto(max);
+		if(use_socksV4[max])
+		{
+			init(max);
+		}
+		else
+		{
+			init(max);
+			conekuto(max);
+		}
 	}
+
 	string recv_msg(int q)
 	{
 		pa_detect = 0;
@@ -175,7 +276,7 @@ public:
 		if (buffering[q] == 0)
 		{
 			if (tmp == "exit") done_flag[q] = 1;
-			print_msg(" " + tmp + "<br/>", q);
+			print_msg("<b>" + tmp + "</b><br/>", q);
 		}
 		//cmd[q] = tmp;
 		tmp += data[q][count[q]];
@@ -225,11 +326,13 @@ public:
 		{
 			memcpy(&rfds, &rs, sizeof(rfds));
 			memcpy(&wfds, &ws, sizeof(wfds));
+
 			if (select(1024, &rfds, &wfds, (fd_set*)0, (struct timeval*)0) < 0){perror("select error"); exit(1);}
 			int t;
 			usleep(30000);
 			for (int i = 1; i <= max; i++)
 			{
+
 				switch(FSM[i])
 				{
 					case F_CONNECTING:
@@ -247,6 +350,7 @@ public:
 						break;
 					
 					case F_WRITING:
+
 						if (FD_ISSET(fd[i], &wfds))
 						{
 							int flag = send_msg(i);
@@ -256,6 +360,7 @@ public:
 							FSM[i] = F_READING;
 							if (done_flag[i])
 							{
+
 								FD_CLR(fd[i], &ws);
 								FD_CLR(fd[i], &rs);
 								shutdown(fd[i],2);
@@ -266,6 +371,7 @@ public:
 						break;
 						
 					case F_READING:
+
 						if (FD_ISSET(fd[i], &rfds))
 						{
 							string msg = recv_msg(i);
@@ -314,11 +420,21 @@ public:
 		h.parse();
 		//h.list_arg();
 		//return;
-		if (h.chk_arg("h1")) clients.add_user(h.arg["h1"], h.arg["p1"], h.arg["f1"]);
-		if (h.chk_arg("h2")) clients.add_user(h.arg["h2"], h.arg["p2"], h.arg["f2"]);
-		if (h.chk_arg("h3")) clients.add_user(h.arg["h3"], h.arg["p3"], h.arg["f3"]);
-		if (h.chk_arg("h4")) clients.add_user(h.arg["h4"], h.arg["p4"], h.arg["f4"]);
-		if (h.chk_arg("h5")) clients.add_user(h.arg["h5"], h.arg["p5"], h.arg["f5"]);
+		if (h.chk_arg("sh1")) clients.add_user(h.arg["h1"], h.arg["p1"], h.arg["f1"], h.arg["sh1"], h.arg["sp1"]);
+		else if (h.chk_arg("h1")) clients.add_user(h.arg["h1"], h.arg["p1"], h.arg["f1"], "", "");
+		
+		if (h.chk_arg("sh2")) clients.add_user(h.arg["h2"], h.arg["p2"], h.arg["f2"], h.arg["sh2"], h.arg["sp2"]);
+		else if (h.chk_arg("h2")) clients.add_user(h.arg["h2"], h.arg["p2"], h.arg["f2"], "", "");
+		
+		if (h.chk_arg("sh3")) clients.add_user(h.arg["h3"], h.arg["p3"], h.arg["f3"], h.arg["sh3"], h.arg["sp3"]);
+		else if (h.chk_arg("h3")) clients.add_user(h.arg["h3"], h.arg["p3"], h.arg["f3"], "", "");
+		
+		if (h.chk_arg("sh4")) clients.add_user(h.arg["h4"], h.arg["p4"], h.arg["f4"], h.arg["sh4"], h.arg["sp4"]);
+		else if (h.chk_arg("h4")) clients.add_user(h.arg["h4"], h.arg["p4"], h.arg["f4"], "", "");
+		
+		if (h.chk_arg("sh5")) clients.add_user(h.arg["h5"], h.arg["p5"], h.arg["f5"], h.arg["sh5"], h.arg["sp5"]);
+		else if (h.chk_arg("h5")) clients.add_user(h.arg["h5"], h.arg["p5"], h.arg["f5"], "", "");
+		
 		clients.go();
 	}
 };
