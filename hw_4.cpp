@@ -57,28 +57,8 @@ public:
 			(unsigned char)q[6] << 8 |
 			(unsigned char)q[7];
 		ip_str = i2s((unsigned char)q[4]) + "." + i2s((unsigned char)q[5]) + "." + i2s((unsigned char)q[6]) + "." + i2s((unsigned char)q[7]);
-		USER_ID = q.c_str() + 8;
+		USER_ID = q.substr(8);
 		
-	}
-	string encode_request(int mode, int port, int a, int b, int c, int d, string id, string dn)
-	{
-		string r = "";
-		r += (unsigned char)4;
-		r += (unsigned char)mode;
-		r += (unsigned char)(DST_PORT / 256);
-		r += (unsigned char)(DST_PORT % 256);
-		r += (unsigned char)a;
-		r += (unsigned char)b;
-		r += (unsigned char)c;
-		r += (unsigned char)d;
-		r += id;
-		r += '\0';
-		if (a == 0 && b == 0 && c == 0)
-		{
-			r += dn;
-			r += '\0';
-		}
-		return r;
 	}
 	void get_request(int fd)
 	{

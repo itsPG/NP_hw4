@@ -79,7 +79,8 @@ PG_TCP_client Elie;
 int main()
 {
 	Elie.init("itsPG.org", 8001);
-	Rixia.conekuto(Elie.fd, Elie.fd, 1, 23, 140, 112, 172, 1, "PG", "");
+	//Rixia.conekuto(Elie.fd, Elie.fd, 1, 23, 140, 112, 172, 1, "PG", "");
+	Rixia.conekuto(Elie.fd, Elie.fd, 1, 23, 0, 0, 0, 1, "PG", "ptt.cc");
 	//cout << "succes"
 	dup2(Elie.fd, 0);
 	//dup2(Elie.fd, 1);
