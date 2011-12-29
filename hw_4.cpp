@@ -40,22 +40,14 @@ public:
 	unsigned char VN, CD;
 	unsigned int DST_PORT, DST_IP;
 	string USER_ID, HOST_NAME;
-	string ip_str,buf;
+	string ip_str, buf;
+	// buf is the query data
 	bool reject;
-	void get_request(int fd)
+	int type;
+	// type:1 -> socksv4 , type:2 -> socksv4a
+	void decode_request(string q)
 	{
-		reject = 0;
-		string q = "", tmp;
-		PG_get(fd, q, 8);
-		PG_get(fd, tmp, -1);
-		q += tmp;
-		buf = q;
-		//cout << "get request read size " << q.size() << endl;
-		if (q.size() < 9)
-		{
-			cerr << "!!!!!!!!!!!!!!! socks request error : " << q << " size : " << q.size() << endl;
-			//exit(1);
-		}
+		
 		VN = (unsigned char)q[0];
 		CD = (unsigned char)q[1];
 		DST_PORT = (unsigned char)q[2] << 8 | (unsigned char)q[3];
@@ -66,6 +58,37 @@ public:
 			(unsigned char)q[7];
 		ip_str = i2s((unsigned char)q[4]) + "." + i2s((unsigned char)q[5]) + "." + i2s((unsigned char)q[6]) + "." + i2s((unsigned char)q[7]);
 		USER_ID = q.c_str() + 8;
+		
+	}
+	string encode_request(int mode, int port, int a, int b, int c, int d, string id, string dn)
+	{
+		string r = "";
+		r += (unsigned char)4;
+		r += (unsigned char)mode;
+		r += (unsigned char)(DST_PORT / 256);
+		r += (unsigned char)(DST_PORT % 256);
+		r += (unsigned char)a;
+		r += (unsigned char)b;
+		r += (unsigned char)c;
+		r += (unsigned char)d;
+		r += id;
+		r += '\0';
+		if (a == 0 && b == 0 && c == 0)
+		{
+			r += dn;
+			r += '\0';
+		}
+		return r;
+	}
+	void get_request(int fd)
+	{
+		reject = 0;
+		string q = "", tmp;
+		PG_get(fd, q, 8);
+		PG_get(fd, tmp, -1);
+		q += tmp;
+		buf = q;
+		decode_request(q);
 		if (q[4] == 0 && q[5] == 0 && q[6] == 0)
 		{
 			PG_get(fd, HOST_NAME, -1);
@@ -76,6 +99,14 @@ public:
 			char addr_p[INET_ADDRSTRLEN];
 			ip_str = inet_ntop(AF_INET, &sin.sin_addr, addr_p, sizeof(addr_p));
 		}
+		//cout << "get request read size " << q.size() << endl;
+		if (q.size() < 9)
+		{
+			cerr << "!!!!!!!!!!!!!!! socks request error : " << q << " size : " << q.size() << endl;
+			//exit(1);
+		}
+		
+		
 		cout << "#" << getpid() << " is created for " << ip_str << endl;
 		if (q[5] == 114)reject = 1;
 	}
@@ -116,10 +147,10 @@ public:
 		r[1] = 90 + reject;
 		r[2] = port / 256;
 		r[3] = port % 256;
-		r[4] = 140;
-		r[5] = 113;
-		r[6] = 179;
-		r[7] = 240;
+		r[4] = 0;
+		r[5] = 0;
+		r[6] = 0;
+		r[7] = 0;
 		write(fd, r.c_str(), 8);
 	}
 };

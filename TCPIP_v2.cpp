@@ -21,10 +21,14 @@
 using namespace std;
 
 int PG_get(int fd, string &q, int len)
+/*
+	this function will read exactly len byte(s) when len != -1;
+	or read till read a '\0'
+*/
 {
 	q = "";
 	char c;
-	for (int i = 1;len == -1 || i <= len; i++)
+	for (int i = 1; len == -1 || i <= len; i++)
 	{
 		int s = read(fd, &c, 1);
 		//cout << "read " << (unsigned int)c << endl;
@@ -136,8 +140,10 @@ public:
 		while(1)
 		{
 			
+			//----
 			int enable = 1;
 			setsockopt(l_fd, SOL_SOCKET, SO_REUSEADDR,  &enable, sizeof(int));
+			//---
 			
 			r = bind(l_fd, (struct sockaddr *)&sin, sizeof(sin));
 			cout << getpid() << " bind: " << port << endl;
@@ -152,47 +158,33 @@ public:
 		socklen_t len;
 		
 		listen(l_fd, 10); 
-		cout << "listen: " << endl;
-		printf("waiting ...\n");
+		cout << "listen" << endl;
+
 		while(1)
 		{
-			if (stay_flag) cout << "before accept" << endl;
 			c_fd = accept(l_fd, (struct sockaddr *) &cin, &len); 
-			if (stay_flag) cout << "after accept" << endl;
 			if (c_fd == -1)
 			{
 				perror("accept error");
 				exit(1);
 			}
-			
 			my_port = ntohs(cin.sin_port);
 			char addr_p[INET_ADDRSTRLEN];
 			my_ip = inet_ntop(AF_INET, &cin.sin_addr, addr_p, sizeof(addr_p));
-			//cout << "accept: " << c_fd << endl;
-			//cout << "IP: " << my_ip << endl;
-			//cout << "port: " << ntohs(cin.sin_port) << endl;
 			cout << "accept: " << my_ip << " / " << my_port << endl;
-			//return;
+
 			if (stay_flag)
 			{
-				cout << "return !! " << endl;
-				//close(l_fd);
 				return;
 			}
 			if (pid = harmonics())
 			{
-				//cout << "parent" << endl;
 				close(c_fd);
-				//close(global_l_fd);
-
+				continue;
 			}
 			else
 			{
 				close(l_fd);
-				//dup2(c_fd, 0);
-				//dup2(c_fd, 1);
-				//dup2(c_fd, 2);
-				//close(c_fd);
 				return ;
 			}
 		}
