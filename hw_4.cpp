@@ -74,8 +74,20 @@ public:
 			}
 		}
 	}
+	int chk(string q)
+	{
+		for (int i = 1; i <= m; i++)
+		{
+			if (match(q, ip[i]))
+			{
+				return flag[i];
+			}
+		}
+		return 0;
+	}
 	int chk(string in, string out) //  0:allow , 1:deny
 	{
+		return chk(out);
 		cout << in << "~~" << out << endl;
 		int f_in = -1, f_out = -1;
 		int in_lv, out_lv;
@@ -140,6 +152,7 @@ public:
 			(unsigned char)q[6] << 8 |
 			(unsigned char)q[7];
 		ip_str = i2s((unsigned char)q[4]) + "." + i2s((unsigned char)q[5]) + "." + i2s((unsigned char)q[6]) + "." + i2s((unsigned char)q[7]);
+		USER_ID = "";
 		USER_ID = q.substr(8);
 		
 	}
@@ -326,7 +339,10 @@ int main()
 	}
 	if (Tio.CD == 1)
 	{
-		cout << "#" << getpid() << " CONNECT" << endl;
+		cout << "\033[1;36m" ;
+		cout << "#" << getpid() << " CONNECT" ;
+		cout << "\033[0;m" << endl;
+		
 		Elie.init(Tio.ip_str, Tio.DST_PORT);
 		Tio.reply(c_fd);
 		Noel.init(c_fd, Elie.fd);
@@ -335,7 +351,10 @@ int main()
 	if (Tio.CD == 2)
 	{
 		
-		cout << "#" << getpid() << " BIND" << endl;
+		cout << "\033[1;36m" ;
+		cout << "#" << getpid() << " BIND";
+		cout << "\033[0;m" << endl;
+		
 		for (int i = 60001; i <= 65000; i++)
 		{
 			cout << "trying " << i << endl;
