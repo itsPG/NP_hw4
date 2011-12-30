@@ -34,6 +34,83 @@ int s2i(string q)
 }
 PG_TCP_server Rixia, Rixia2;
 PG_TCP_client Elie;
+class PG_firewall
+{
+public:
+	bool match(string &a, string &b)
+	{
+		if (b == "all") return 1;
+		return a.find(b) == 0;
+	}
+	int flag[1001], flag2[1001];
+	// flag2 0:any , 1:in , 2:out
+	string ip[1001];
+	int m;
+	PG_firewall()
+	{
+		m = 0;
+	}
+	void load(string fn)
+	{
+		m = 0;
+		ifstream fin(fn.data());
+		string a, b, c, t;
+		
+		while (getline(fin, t))
+		{
+			istringstream ssin(t);
+			ssin >> a >> b;
+			++m;
+			if (a == "allow" ) flag[m] = 0;
+			else if (a == "deny") flag[m] = 1;
+			else {--m; continue;}
+			
+			ip[m] = b;
+			flag2[m] = 0;
+			if (ssin >> c)
+			{
+				if (c == "in") flag2[m] = 1;
+				if (c == "out") flag2[m] = 2;
+			}
+		}
+	}
+	int chk(string in, string out) //  0:allow , 1:deny
+	{
+		cout << in << "~~" << out << endl;
+		int f_in = -1, f_out = -1;
+		int in_lv, out_lv;
+		for (int i = 1; i <= m; i++)
+		{
+			if (match(in, ip[i]) && (flag2[i] == 0 || flag2[i] == 1))
+			{
+				f_in = flag[i];
+				in_lv = i;
+				cout << "in " << flag[i] << " at lv " << i << endl;
+				break;
+			}
+		}
+		for (int i = 1; i <= m; i++)
+		{
+			if (match(out, ip[i]) && (flag2[i] == 0 || flag2[i] == 2))
+			{
+				f_out = flag[i];
+				out_lv = i;
+				cout << "out " << flag[i] << " at lv " << i << endl;
+				break;
+			}
+		}
+		if (f_in == -1 && f_out == -1) return 0;
+		if (f_in == 0 && f_out == 0) return 0;
+		if (f_in == 1 && f_out == 1) return 1;
+		
+		if (f_in == -1 && f_out != -1) return f_out;
+		if (f_in != -1 && f_out == -1) return f_in;
+		
+		return in_lv < out_lv ? f_in : f_out;
+		
+	}
+};
+
 class PG_socks_v4
 {
 public:
@@ -45,6 +122,12 @@ public:
 	bool reject;
 	int type;
 	// type:1 -> socksv4 , type:2 -> socksv4a
+	PG_firewall FireWall;
+	PG_socks_v4()
+	{
+		FireWall.load("iptable.txt");
+		
+	}
 	void decode_request(string q)
 	{
 		
@@ -88,7 +171,9 @@ public:
 		
 		
 		cout << "#" << getpid() << " is created for " << ip_str << endl;
-		if (q[5] == 114)reject = 1;
+		reject = FireWall.chk(Rixia.my_ip, ip_str);
+		// 1:in, 2:out 
+		// 
 	}
 	void print()
 	{
@@ -235,6 +320,8 @@ int main()
 	if (Tio.reject)
 	{
 		Tio.deny_msg();
+		string tmp = "  "; tmp[0] = 0; tmp[1] = 90;
+		write(c_fd, tmp.c_str(), 2);
 		exit(0);
 	}
 	if (Tio.CD == 1)
