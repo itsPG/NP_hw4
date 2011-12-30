@@ -156,6 +156,18 @@ public:
 		USER_ID = q.substr(8);
 		
 	}
+	void err_exit(string q)
+	{
+		cout << "\033[1;35m" ;
+		cout << q;
+		cout << "\033[0;m" <<endl;
+		exit(1);
+	}
+	void chk_request()
+	{
+		if (VN != 4)err_exit("VERSION check failed");
+		if (CD != 1 && CD != 2)err_exit("COMMAND check failed");
+	}
 	void get_request(int fd)
 	{
 		reject = 0;
@@ -165,6 +177,7 @@ public:
 		q += tmp;
 		buf = q;
 		decode_request(q);
+		chk_request();
 		if (q[4] == 0 && q[5] == 0 && q[6] == 0)
 		{
 			PG_get(fd, HOST_NAME, -1);
