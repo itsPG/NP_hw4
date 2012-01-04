@@ -42,9 +42,9 @@ public:
 		if (b == "all") return 1;
 		return a.find(b) == 0;
 	}
-	int flag[1001], flag2[1001];
+	int flag[1001];
 	// flag2 0:any , 1:in , 2:out
-	string ip[1001];
+	string ip[1001], port[1001];
 	int m;
 	PG_firewall()
 	{
@@ -66,61 +66,22 @@ public:
 			else {--m; continue;}
 			
 			ip[m] = b;
-			flag2[m] = 0;
-			if (ssin >> c)
-			{
-				if (c == "in") flag2[m] = 1;
-				if (c == "out") flag2[m] = 2;
-			}
+			port[m] = "all";
+			ssin >> port[m];
 		}
 	}
-	int chk(string q)
+	int chk(string q, string q2)
 	{
 		for (int i = 1; i <= m; i++)
 		{
-			if (match(q, ip[i]))
+			if (match(q, ip[i]) && match(q2, port[i]))
 			{
 				return flag[i];
 			}
 		}
 		return 0;
 	}
-	int chk(string in, string out) //  0:allow , 1:deny
-	{
-		return chk(out);
-		cout << in << "~~" << out << endl;
-		int f_in = -1, f_out = -1;
-		int in_lv, out_lv;
-		for (int i = 1; i <= m; i++)
-		{
-			if (match(in, ip[i]) && (flag2[i] == 0 || flag2[i] == 1))
-			{
-				f_in = flag[i];
-				in_lv = i;
-				cout << "in " << flag[i] << " at lv " << i << endl;
-				break;
-			}
-		}
-		for (int i = 1; i <= m; i++)
-		{
-			if (match(out, ip[i]) && (flag2[i] == 0 || flag2[i] == 2))
-			{
-				f_out = flag[i];
-				out_lv = i;
-				cout << "out " << flag[i] << " at lv " << i << endl;
-				break;
-			}
-		}
-		if (f_in == -1 && f_out == -1) return 0;
-		if (f_in == 0 && f_out == 0) return 0;
-		if (f_in == 1 && f_out == 1) return 1;
-		
-		if (f_in == -1 && f_out != -1) return f_out;
-		if (f_in != -1 && f_out == -1) return f_in;
-		
-		return in_lv < out_lv ? f_in : f_out;
-		
-	}
+
 };
 
 class PG_socks_v4
@@ -197,7 +158,7 @@ public:
 		
 		
 		cout << "#" << getpid() << " is created for " << ip_str << endl;
-		reject = FireWall.chk(Rixia.my_ip, ip_str);
+		reject = FireWall.chk(ip_str, i2s(DST_PORT));
 		// 1:in, 2:out 
 		// 
 	}
@@ -238,10 +199,10 @@ public:
 		r[1] = 90 + reject;
 		r[2] = port / 256;
 		r[3] = port % 256;
-		r[4] = 0;
-		r[5] = 0;
-		r[6] = 0;
-		r[7] = 0;
+		r[4] = 140;
+		r[5] = 113;
+		r[6] = 179;
+		r[7] = 240;
 		write(fd, r.c_str(), 8);
 	}
 };
@@ -346,7 +307,7 @@ int main()
 	if (Tio.reject)
 	{
 		Tio.deny_msg();
-		string tmp = "  "; tmp[0] = 0; tmp[1] = 90;
+		string tmp = "  "; tmp[0] = 0; tmp[1] = 91;
 		write(c_fd, tmp.c_str(), 2);
 		exit(0);
 	}
