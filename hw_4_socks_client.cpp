@@ -79,8 +79,28 @@ PG_TCP_client Elie;
 int main()
 {
 	Elie.init("itsPG.org", 8001);
+	
+	//this is the basic  1 / 2
 	//Rixia.conekuto(Elie.fd, Elie.fd, 1, 23, 140, 112, 172, 1, "PG", "");
-	Rixia.conekuto(Elie.fd, Elie.fd, 1, 23, 0, 0, 0, 1, "PG", "ptt.cc");
+	
+	//this is the basic  2 / 2 
+	//Rixia.conekuto(Elie.fd, Elie.fd, 1, 23, 0, 0, 0, 1, "PG", "ptt.cc"); 
+
+	//empty str
+	//Rixia.conekuto(Elie.fd, Elie.fd, 1, 23, 0, 0, 0, 1, "", "");
+	
+	//wrong DN
+	//Rixia.conekuto(Elie.fd, Elie.fd, 1, 23, 0, 0, 0, 1, "", "asdfasdfawixefrjapserogj.rgfhjauioshrgpu.asrdghiuqerhgp.0.0");
+	
+	//wrong DN2
+	//Rixia.conekuto(Elie.fd, Elie.fd, 1, 23, 0, 0, 0, 1, "", "ptt.cc\0ptt2.cc\0asdf\0");
+	
+	string big = "0123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789";
+	for (int i = 1; i <= 7; i++)big += big;
+	//Rixia.conekuto(Elie.fd, Elie.fd, 1, 23, 0, 0, 0, 1, big, big);
+	
+	Rixia.conekuto(Elie.fd, Elie.fd, 1, 23, 0, 0, 0, 1, "\1\2\3\4\5\6\7\8\9\10\11\12\13\14\15", "ptt.cc");
+	
 	//cout << "succes"
 	dup2(Elie.fd, 0);
 	//dup2(Elie.fd, 1);
